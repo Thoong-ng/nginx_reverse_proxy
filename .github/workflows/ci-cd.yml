@@ -1,0 +1,58 @@
+name: Deploy Nginx Reverse Proxy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      env:
+        DOCKER_REPO: ${{ secrets.DOCKER_REPO }}
+      run: |
+        docker build -t $DOCKER_REPO:${{ github.sha }} ./nginx
+        docker push $DOCKER_REPO:${{ github.sha }}
+
+    - name: Deploy to AWS
+      env:
+        DOCKER_REPO: ${{ secrets.DOCKER_REPO }}
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
+        scp -i private_key -o StrictHostKeyChecking=no ./scripts/deploy.sh ${EC2_USERNAME}@${EC2_HOST}:~/
+        ssh -i private_key -o StrictHostKeyChecking=no ${EC2_USERNAME}@${EC2_HOST} "
+          export DOCKER_REPO=$DOCKER_REPO
+          export IMAGE_TAG=${{ github.sha }}
+          ./deploy.sh
+        "
+
+    - name: Rollback on failure
+      if: failure()
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      run: |
+        echo "$SSH_PRIVATE_KEY" > private_key && chmod 600 private_key
+        ssh -i private_key -o StrictHostKeyChecking=no ${EC2_USERNAME}@${EC2_HOST} "./rollback.sh"
