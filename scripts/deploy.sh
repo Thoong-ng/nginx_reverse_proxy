@@ -3,17 +3,19 @@
 set -e
 
 # Pull the latest image
-docker pull $DOCKER_REPO:$IMAGE_TAG
+docker pull $DOCKERHUB_REPO:$IMAGE_TAG
 
-# Stop and remove the current container
-docker stop nginx-proxy || true
-docker rm nginx-proxy || true
+# Stop and remove the old container if it exists
+docker stop nginx-reverse-proxy || true
+docker rm nginx-reverse-proxy || true
 
 # Run the new container
-docker run -d --name nginx-proxy \
-  -p 80:80 -p 443:443 \
-  --restart always \
-  $DOCKER_REPO:$IMAGE_TAG
+docker run -d --name nginx-reverse-proxy \
+  -p 80:80 \
+  -e API_SERVER_1_IP=${API_SERVER_1_IP} \
+  -e API_SERVER_2_IP=${API_SERVER_2_IP} \
+  -e API_SERVER_3_IP=${API_SERVER_3_IP} \
+  $DOCKERHUB_REPO:$IMAGE_TAG
 
 # Save the current image tag for potential rollback
-echo $IMAGE_TAG > /tmp/current_image_tag
+echo $IMAGE_TAG > ~/current_image_tag.txt

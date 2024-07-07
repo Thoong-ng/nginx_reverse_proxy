@@ -1,11 +1,11 @@
-FROM nginx:alpine
+FROM nginx:latest
 
-COPY nginx.conf /etc/nginx/nginx.conf
+RUN apt-get update && apt-get install -y bash
 
-RUN mkdir -p /etc/letsencrypt/live/yourdomain.com
-COPY fullchain.pem /etc/letsencrypt/live/yourdomain.com/
-COPY privkey.pem /etc/letsencrypt/live/yourdomain.com/
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY scripts/generate_api_servers.sh /generate_api_servers.sh
+RUN chmod +x /generate_api_servers.sh
 
-EXPOSE 80 443
+EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/bin/bash", "-c", "/generate_api_servers.sh && nginx -g 'daemon off;'"]
